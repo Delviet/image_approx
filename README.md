@@ -7,7 +7,8 @@ This project contains Python scripts, which approximate (recreate) a given image
 ### Panneau
 - [x] Naive EA implementation
 - [x] Dynamic operation probabilities
-- [x] Simple cache for the addition operation
+- [ ] Simple cache for the addition operation
+- [x] Instruction-based backup system
 - [ ] Log creation
 - [ ] Cache for deletion and mutation
 - [ ] Dynamic zone allocation

@@ -49,6 +49,13 @@ class Chromosome:
                 self._process(self.final_point), 
                 self.color)
 
+    def __eq__(self, other):
+        return all([
+            self.init_point == other.init_point, 
+            self.final_point == other.final_point,
+            self.color == other.color
+        ])
+    
     def __str__(self):
         i_p, f_p, c = self.display()
         return f"Chromosome of a line starting at point {i_p} and ending in {f_p} having color {c}"
@@ -63,18 +70,18 @@ class Sample:
         self.add = False
     
     def display(self): # create an image
-        if self.add: # add only the last one chromosome
-            temp_img = self.cache
-            chromo = self.chromo_list[-1]
+#        if self.add: # add only the last one chromosome
+#            temp_img = self.cache
+#            chromo = self.chromo_list[-1]
+#            i_p, f_p, c = chromo.display()
+#            cv2.line(temp_img, i_p, f_p, list(c))
+#            self.add = False
+#        else: # if deleted or mutated - fully recreate
+        temp_img = deepcopy(self.init) # create a background depending on image color
+        for chromo in self.chromo_list:
             i_p, f_p, c = chromo.display()
             cv2.line(temp_img, i_p, f_p, list(c))
-            self.add = False
-        else: # if deleted or mutated - fully recreate
-            temp_img = self.init # create a background depending on image color
-            for chromo in self.chromo_list:
-                i_p, f_p, c = chromo.display()
-                cv2.line(temp_img, i_p, f_p, list(c))
-        self.cache = temp_img
+#        self.cache = temp_img
         return temp_img
 
     def evaluate(self, target_image): # check the distance
@@ -86,17 +93,24 @@ class Sample:
 
     def _change_chrom(self):
         mask = np.random.choice(len(self.chromo_list))
+        backup = [mask, deepcopy(self.chromo_list[mask])]
         self.chromo_list[mask].mutate()
+        return backup
 
     def _new_chroms(self):
         self.chromo_list.append(Chromosome())
+        backup = [len(self.chromo_list) - 1, deepcopy(self.chromo_list[-1])]
+        return backup
 
     def _del_chroms(self):
         if len(self.chromo_list) < 10:
-            pass
+            backup = [None, None]
+            return backup
         else: 
             to_del = np.random.choice(len(self.chromo_list))
+            backup = [to_del, deepcopy(self.chromo_list[to_del])]
             del self.chromo_list[to_del]
+            return backup
 
     def mutate(self, timestamp):
         if timestamp < 0.5:
@@ -105,26 +119,45 @@ class Sample:
         else:
             start = (timestamp - 0.5) * 2
             probs = [0.4 + 0.3 * start, 0.3 - 0.1 * start, 0.3 - 0.2 * start]
+        
         name = np.random.choice(['change', 'new', 'del'], p = probs)
+        
         if name == 'change':
-            self._change_chrom()
+            backup = self._change_chrom()
         elif name == 'new':
+            backup = self._new_chroms()
             self.add = True
-            self._new_chroms()
         elif name == 'del':
-            self._del_chroms()
+            backup = self._del_chroms()
+        
+        return [name] + backup
+    
+def rollback(sample, backup):
+    if backup[0] == 'new':
+        _, _, _ = backup
+        del sample.chromo_list[-1]
+    elif backup[0] == 'change':
+        _, idx, val = backup
+        sample.chromo_list[idx] = deepcopy(val)
+    elif backup[0] == 'del':
+        _, idx, val = backup
+        if not idx is None:
+            sample.chromo_list.insert(idx, val)
 
-my_samp = Sample(1)
-best_samp = None
+samp = Sample(1)
 best_score = 10**100
-iter_num = 1e6
+iter_num = 10**6
 for i in tqdm(range(iter_num)): 
-    curr_score = my_samp.evaluate(img)
-    if curr_score < best_score:
-        best_samp = deepcopy(my_samp)
-        best_score = curr_score
+    curr_score = samp.evaluate(img)
+    #print(i, curr_score, end = ' ')
+    if curr_score > best_score:
+        rollback(samp, backup)
+        #print('backed\n\n\n\n')
     else:
-        my_samp = deepcopy(best_samp)
+        best_score = curr_score
+        #print('new high score\n\n\n\n')
     if i % 1000 == 0:
-        cv2.imwrite(f'./iter_{i}.png', best_samp.display())
-    my_samp.mutate(i/iter_num)
+        cv2.imwrite(f'./iter_{i}.png', samp.display())
+    backup = samp.mutate(i/iter_num)
+    #print(f"{backup[0]}, {backup[1]}, {str(backup[2])}\n")
+    #print('\n'.join([str(i) for i in samp.chromo_list]))
